@@ -6,50 +6,67 @@
 //
 
 import SwiftUI
-import SwiftData
+import AVFoundation
+import AVFAudio
+
+let synthesizer = AVSpeechSynthesizer()
+
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+    @State private var personalVoices: [AVSpeechSynthesisVoice] = []
+    @State private var selectedVoice: AVSpeechSynthesisVoice?
+    @State private var speechToText: String = "United States, Canada, Mexico, Panama, Haiti, Jamaica, Peru"
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        VStack {
+            Button(action: {
+                Task {
+                    await fetchPersonalVoices()
                 }
-                .onDelete(perform: deleteItems)
+            }, label: {
+                Text("Request Personal Voices")
+            })
+            .padding()
+            
+            if personalVoices.isEmpty {
+                Text("No voices available")
+            } else {
+                ForEach(self.personalVoices, id: \.identifier) { voice in
+                    Button(action: {
+                        selectedVoice = voice
+                    }, label: {
+                        Text(voice.name)
+                    })
+                    .padding()
+                    
+                }
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
+            Spacer()
+            if let selectedVoice {
+                TextEditor(text: $speechToText)
+                    .textFieldStyle(.roundedBorder)
+                Button(action: {
+                    speakUtterance(string: speechToText)
+                }, label: {
+                    Text("Speak")
+                })
+                .padding()
             }
-        } detail: {
-            Text("Select an item")
+        
+        }.padding()
+    }
+    
+    func speakUtterance(string: String) {
+        let utterance = AVSpeechUtterance(string: string)
+        if let selectedVoice {
+            utterance.voice = selectedVoice
+            synthesizer.speak(utterance)
         }
     }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+    
+    func fetchPersonalVoices() async {
+        AVSpeechSynthesizer.requestPersonalVoiceAuthorization() { status in
+            if status == .authorized {
+                personalVoices = AVSpeechSynthesisVoice.speechVoices().filter { $0.voiceTraits.contains(.isPersonalVoice) }
             }
         }
     }
@@ -57,5 +74,4 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
 }
